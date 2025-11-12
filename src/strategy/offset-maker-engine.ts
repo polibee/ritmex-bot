@@ -82,6 +82,8 @@ export class OffsetMakerEngine {
   private lastSkipBuy = false;
   private lastSkipSell = false;
   private lastImbalance: "balanced" | "buy_dominant" | "sell_dominant" = "balanced";
+  private lastBuyPriceViable = true;
+  private lastSellPriceViable = true;
 
   // Reprice suppression for fast-ticking Lighter order book
   private readonly repriceDwellMs: number;
@@ -284,8 +286,12 @@ export class OffsetMakerEngine {
       const priceDecimals = this.getPriceDecimals();
       const closeBidPrice = formatPriceToString(finalBid, priceDecimals);
       const closeAskPrice = formatPriceToString(finalAsk, priceDecimals);
-      const bidPrice = formatPriceToString(finalBid - this.config.bidOffset, priceDecimals);
-      const askPrice = formatPriceToString(finalAsk + this.config.askOffset, priceDecimals);
+      const rawBidPrice = finalBid - this.config.bidOffset;
+      const rawAskPrice = finalAsk + this.config.askOffset;
+      const safeBid = this.ensureMakerPrice("BUY", rawBidPrice, finalBid, finalAsk);
+      const safeAsk = this.ensureMakerPrice("SELL", rawAskPrice, finalBid, finalAsk);
+      const bidPrice = safeBid != null ? formatPriceToString(safeBid, priceDecimals) : null;
+      const askPrice = safeAsk != null ? formatPriceToString(safeAsk, priceDecimals) : null;
       const absPosition = Math.abs(position.positionAmt);
       const desired: DesiredOrder[] = [];
       const canEnter = !this.rateLimit.shouldBlockEntries();
@@ -293,10 +299,22 @@ export class OffsetMakerEngine {
       if (absPosition < EPS) {
         this.entryPricePendingLogged = false;
         if (!skipBuySide && canEnter) {
-          desired.push({ side: "BUY", price: bidPrice, amount: this.config.tradeAmount, reduceOnly: false });
+          if (bidPrice != null) {
+            this.lastBuyPriceViable = true;
+            desired.push({ side: "BUY", price: bidPrice, amount: this.config.tradeAmount, reduceOnly: false });
+          } else if (this.lastBuyPriceViable) {
+            this.lastBuyPriceViable = false;
+            this.tradeLog.push("info", "跳过买单：价差不足以构造maker价格");
+          }
         }
         if (!skipSellSide && canEnter) {
-          desired.push({ side: "SELL", price: askPrice, amount: this.config.tradeAmount, reduceOnly: false });
+          if (askPrice != null) {
+            this.lastSellPriceViable = true;
+            desired.push({ side: "SELL", price: askPrice, amount: this.config.tradeAmount, reduceOnly: false });
+          } else if (this.lastSellPriceViable) {
+            this.lastSellPriceViable = false;
+            this.tradeLog.push("info", "跳过卖单：价差不足以构造maker价格");
+          }
         }
       } else {
         const closeSide: "BUY" | "SELL" = position.positionAmt > 0 ? "SELL" : "BUY";
@@ -725,6 +743,31 @@ export class OffsetMakerEngine {
 
   private getReferencePrice(): number | null {
     return getMidOrLast(this.depthSnapshot, this.tickerSnapshot);
+  }
+
+  private ensureMakerPrice(
+    side: "BUY" | "SELL",
+    rawPrice: number,
+    topBid: number | null,
+    topAsk: number | null
+  ): number | null {
+    if (!Number.isFinite(rawPrice) || rawPrice <= 0) return null;
+    const tick = Math.max(this.priceTick, 1e-9);
+    if (side === "BUY") {
+      if (topAsk == null || !Number.isFinite(topAsk)) return rawPrice;
+      const maxPrice = Number(topAsk) - tick;
+      if (!Number.isFinite(maxPrice) || maxPrice <= 0) return null;
+      const adjusted = Math.min(rawPrice, maxPrice);
+      return adjusted > 0 ? adjusted : null;
+    }
+    if (side === "SELL") {
+      if (topBid == null || !Number.isFinite(topBid)) return rawPrice;
+      const minPrice = Number(topBid) + tick;
+      if (!Number.isFinite(minPrice) || minPrice <= 0) return null;
+      const adjusted = Math.max(rawPrice, minPrice);
+      return adjusted > 0 ? adjusted : null;
+    }
+    return rawPrice;
   }
 
   private isInvalidAmountError(error: unknown): boolean {
