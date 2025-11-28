@@ -4,7 +4,8 @@
 
 如果您希望获取优惠并支持本项目，请考虑使用以下注册链接：
 
-* [Aster 30% 手续费优惠注册链接](https://www.asterdex.com/zh-CN/referral/4665f3)
+* [Lighter 手续费优惠注册链接](https://app.lighter.xyz/?referral=111909FA)
+* [Aster 手续费优惠注册链接](https://www.asterdex.com/zh-CN/referral/4665f3)
 * [Binance 手续费优惠注册链接](https://www.binance.com/join?ref=KNKCA9XC)
 * [GRVT 手续费优惠注册链接](https://grvt.io/exchange/sign-up?ref=sea)
 * [Backpack 手续费优惠注册链接](https://backpack.exchange/join/ritmex)

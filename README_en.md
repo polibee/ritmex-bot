@@ -2,7 +2,8 @@
 
 A Bun-powered multi-exchange perpetuals workstation that ships an SMA30 trend engine, a Guardian stop sentinel, and two market-making modes. It offers instant restarts, realtime market data, structured logging, and an Ink-based CLI dashboard.
 
-* [Aster referral (30% fee discount)](https://www.asterdex.com/en/referral/4665f3)
+* [Lighter referral link](https://app.lighter.xyz/?referral=111909FA)
+* [Aster referral link](https://www.asterdex.com/en/referral/4665f3)
 * [Binance referral link](https://www.binance.com/join?ref=KNKCA9XC)
 * [GRVT referral link](https://grvt.io/exchange/sign-up?ref=sea)
 * [Backpack referral link](https://backpack.exchange/join/ritmex)
