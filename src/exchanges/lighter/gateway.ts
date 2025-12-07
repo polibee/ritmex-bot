@@ -135,6 +135,7 @@ const FEED_STALE_TIMEOUT_MS = 8_000;
 const STALE_CHECK_INTERVAL_MS = 2_000;
 const POSITION_HTTP_MAX_STALE_MS = 60_000;
 const ACCOUNT_POLL_INTERVAL_MS = 5_000;
+const ORDER_RESYNC_INTERVAL_MS = 10_000;
 const POSITION_EPSILON = 1e-12;
 
 const RESOLUTION_MS: Record<string, number> = {
@@ -189,6 +190,8 @@ export class LighterGateway {
   private readonly pollers: Pollers = { ticker: undefined, klines: new Map() };
   private accountPoller: ReturnType<typeof setInterval> | null = null;
   private accountPollInFlight = false;
+  private ordersResyncTimer: ReturnType<typeof setInterval> | null = null;
+  private ordersResyncInFlight = false;
   private readonly klineCache = new Map<string, AsterKline[]>();
   private readonly accountEvent = createEvent<AsterAccountSnapshot>();
   private readonly ordersEvent = createEvent<AsterOrder[]>();
@@ -1573,6 +1576,38 @@ export class LighterGateway {
       };
       this.accountPoller = setInterval(pollAccount, ACCOUNT_POLL_INTERVAL_MS);
       pollAccount();
+    }
+
+    if (!this.ordersResyncTimer) {
+      const resyncOrders = () => {
+        const now = Date.now();
+        if (now - this.lastOrdersUpdateAt < ORDER_RESYNC_INTERVAL_MS - 500) return;
+        if (this.ordersResyncInFlight) return;
+        this.ordersResyncInFlight = true;
+        this.requestOrdersSnapshot()
+          .catch((error) => this.logger("ordersResync", error))
+          .finally(() => {
+            this.ordersResyncInFlight = false;
+          });
+      };
+      this.ordersResyncTimer = setInterval(resyncOrders, ORDER_RESYNC_INTERVAL_MS);
+    }
+  }
+
+  private async requestOrdersSnapshot(): Promise<void> {
+    const ws = this.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    try {
+      const auth = await this.ensureAuthToken();
+      ws.send(
+        JSON.stringify({
+          type: "subscribe",
+          channel: `account_all_orders/${Number(this.signer.accountIndex)}`,
+          auth,
+        })
+      );
+    } catch (error) {
+      this.logger("ordersResyncSnapshot", error);
     }
   }
 
