@@ -1,5 +1,5 @@
 # WebSocket
-URL: `wss://mainnet.zklighter.elliot.ai/stream`
+URL: `wss://mainnet.zklighter.elliot.ai/stream`; `wss://testnet.zklighter.elliot.ai/stream`
 
 You can directly connect to the WebSocket server using wscat:
 
@@ -88,7 +88,7 @@ Example:
 ```
 
 
-Used in: [Transaction](https://apibetadocs.lighter.xyz/docs/websocket-reference#transaction), [Executed Transaction](https://apibetadocs.lighter.xyz/docs/websocket-reference#executed-transaction), [Account Tx](https://apibetadocs.lighter.xyz/docs/websocket-reference#account-tx).
+Used in: [Account Tx](about:/docs/websocket-reference#account-tx).
 
 ```
 Order = {
@@ -127,7 +127,7 @@ Order = {
 ```
 
 
-Used in: [Account Market](https://apibetadocs.lighter.xyz/docs/websocket-reference#account-market), [Account All Orders](https://apibetadocs.lighter.xyz/docs/websocket-reference#account-all-orders), [Account Orders](https://apibetadocs.lighter.xyz/docs/websocket-reference#account-orders).
+Used in: [Account Market](about:/docs/websocket-reference#account-market), [Account All Orders](about:/docs/websocket-reference#account-all-orders), [Account Orders](about:/docs/websocket-reference#account-orders).
 
 ```
 Trade = {
@@ -187,7 +187,7 @@ Example:
 ```
 
 
-Used in: [Trade](https://apibetadocs.lighter.xyz/docs/websocket-reference#trade), [Account All](https://apibetadocs.lighter.xyz/docs/websocket-reference#account-all), [Account Market](https://apibetadocs.lighter.xyz/docs/websocket-reference#account-market), [Account All Trades](https://apibetadocs.lighter.xyz/docs/websocket-reference#account-all-trades).
+Used in: [Trade](about:/docs/websocket-reference#trade), [Account All](about:/docs/websocket-reference#account-all), [Account Market](about:/docs/websocket-reference#account-market), [Account All Trades](about:/docs/websocket-reference#account-all-trades).
 
 ```
 Position = {
@@ -235,7 +235,7 @@ Example:
 ```
 
 
-Used in: [Account All](https://apibetadocs.lighter.xyz/docs/websocket-reference#account-all), [Account Market](https://apibetadocs.lighter.xyz/docs/websocket-reference#account-market), [Account All Positions](https://apibetadocs.lighter.xyz/docs/websocket-reference#account-all-positions).
+Used in: [Account All](about:/docs/websocket-reference#account-all), [Account Market](about:/docs/websocket-reference#account-market), [Account All Positions](about:/docs/websocket-reference#account-all-positions).
 
 ```
 PoolShares = {
@@ -257,7 +257,7 @@ Example:
 ```
 
 
-Used in: [Account All](https://apibetadocs.lighter.xyz/docs/websocket-reference#account-all), [Account All Positions](https://apibetadocs.lighter.xyz/docs/websocket-reference#account-all-positions).
+Used in: [Account All](about:/docs/websocket-reference#account-all), [Account All Positions](about:/docs/websocket-reference#account-all-positions).
 
 The order book channel sends the new ask and bid orders for the given market.
 
@@ -299,7 +299,9 @@ The order book channel sends the new ask and bid orders for the given market.
                 "size": STRING
             }
         ],
-        "offset": INTEGER
+      	"offset": INTEGER,
+        "nonce": INTEGER,
+				"timestamp": INTEGER
     },
     "type": "update/order_book"
 }
@@ -644,7 +646,7 @@ The account market channel sends specific account market data for a market.
 ```
 {
     "account": INTEGER,
-    "channel": "account_all/{MARKET_ID}/{ACCOUNT_ID}",
+    "channel": "account_market/{MARKET_ID}/{ACCOUNT_ID}",
     "funding_history": {
         "timestamp": INTEGER,
         "market_id": INTEGER,
@@ -751,12 +753,13 @@ The account stats channel sends account stats data for the specific account.
 ```
 
 
-The transaction channel sends all new transactions.
+This channel sends transactions related to a specific account.
 
 ```
 {
     "type": "subscribe",
-    "channel": "transaction"
+    "channel": "account_tx/{ACCOUNT_ID}",
+    "auth": "{AUTH_TOKEN}"
 }
 ```
 
@@ -765,30 +768,9 @@ The transaction channel sends all new transactions.
 
 ```
 {
-    "channel": "transaction",
-    "txs": [Transaction],
-    "type": "update/transaction"
-}
-```
-
-
-The structure is the same as with [Transaction](#transaction) channel. But this channel sends only executed transactions.
-
-```
-{
-    "type": "subscribe",
-    "channel": "executed_transaction"
-}
-```
-
-
-The structure is the same as with [Transaction](#transaction) channel. But this channel sends only transactions related to a specific account.
-
-```
-{
-    "type": "subscribe",
-    "channel": "account_tx/{ACCOUNT_ID}",
-    "auth": "{AUTH_TOKEN}"
+    "channel": "account_tx:{ACCOUNT_ID}",
+    "txs": [Account_tx],
+    "type": "update/account_tx"
 }
 ```
 
@@ -1115,6 +1097,6 @@ The account all orders channel sends data about all the order of an account.
 ```
 
 
-Updated 30 days ago
+Updated 9 days ago
 
 * * *

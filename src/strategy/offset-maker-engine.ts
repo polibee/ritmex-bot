@@ -84,6 +84,12 @@ export class OffsetMakerEngine {
   private lastImbalance: "balanced" | "buy_dominant" | "sell_dominant" = "balanced";
   private lastBuyPriceViable = true;
   private lastSellPriceViable = true;
+  private feedStatus = {
+    account: false,
+    depth: false,
+    ticker: false,
+    orders: false,
+  };
 
   // Reprice suppression for fast-ticking Lighter order book
   private readonly repriceDwellMs: number;
@@ -139,6 +145,7 @@ export class OffsetMakerEngine {
       this.exchange.watchAccount.bind(this.exchange),
       (snapshot) => {
         this.accountSnapshot = snapshot;
+        this.feedStatus.account = true;
         const totalUnrealized = Number(snapshot.totalUnrealizedProfit ?? "0");
         if (Number.isFinite(totalUnrealized)) {
           this.accountUnrealized = totalUnrealized;
@@ -158,6 +165,7 @@ export class OffsetMakerEngine {
       this.exchange.watchOrders.bind(this.exchange),
       (orders) => {
         this.syncLocksWithOrders(orders);
+        this.feedStatus.orders = true;
         this.openOrders = Array.isArray(orders)
           ? orders.filter((order) => order.type !== "MARKET" && order.symbol === this.config.symbol)
           : [];
@@ -181,6 +189,7 @@ export class OffsetMakerEngine {
       this.exchange.watchDepth.bind(this.exchange, this.config.symbol),
       (depth) => {
         this.depthSnapshot = depth;
+        this.feedStatus.depth = true;
         this.emitUpdate();
       },
       log,
@@ -194,6 +203,7 @@ export class OffsetMakerEngine {
       this.exchange.watchTicker.bind(this.exchange, this.config.symbol),
       (ticker) => {
         this.tickerSnapshot = ticker;
+        this.feedStatus.ticker = true;
         this.emitUpdate();
       },
       log,
@@ -734,6 +744,7 @@ export class OffsetMakerEngine {
       desiredOrders: this.desiredOrders,
       tradeLog: this.tradeLog.all(),
       lastUpdated: Date.now(),
+      feedStatus: { ...this.feedStatus },
       buyDepthSum10: this.lastBuyDepthSum10,
       sellDepthSum10: this.lastSellDepthSum10,
       depthImbalance: this.lastImbalance,
