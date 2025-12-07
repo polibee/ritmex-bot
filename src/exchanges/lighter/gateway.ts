@@ -1722,6 +1722,8 @@ export class LighterGateway {
     priceDecimals: number;
     sizeDecimals: number;
     marketId: number | null;
+    minBaseAmount: number | null;
+    minQuoteAmount: number | null;
   }> {
     await this.loadMetadata();
     if (this.priceDecimals == null || this.sizeDecimals == null) {
@@ -1735,6 +1737,8 @@ export class LighterGateway {
       priceDecimals: this.priceDecimals,
       sizeDecimals: this.sizeDecimals,
       marketId: this.marketId ?? null,
+      minBaseAmount: this.minBaseAmount ?? null,
+      minQuoteAmount: this.minQuoteAmount ?? null,
     };
   }
 

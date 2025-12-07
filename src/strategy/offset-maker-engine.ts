@@ -70,6 +70,8 @@ export class OffsetMakerEngine {
   private readonly sessionVolume = new SessionVolumeTracker();
   private priceTick: number = 0.1;
   private qtyStep: number = 0.001;
+  private minBaseAmount: number | null = null;
+  private minQuoteAmount: number | null = null;
   private precisionSync: Promise<void> | null = null;
   private marketType: "perp" | "spot" = "perp";
   private baseAsset: string | null = null;
@@ -343,12 +345,35 @@ export class OffsetMakerEngine {
       const safeAsk = this.ensureMakerPrice("SELL", rawAskPrice, finalBid, finalAsk);
       const bidPrice = safeBid != null ? formatPriceToString(safeBid, priceDecimals) : null;
       const askPrice = safeAsk != null ? formatPriceToString(safeAsk, priceDecimals) : null;
-      const absPosition = Math.abs(position.positionAmt);
+      const rawAbsPosition = Math.abs(position.positionAmt);
+      const minSell =
+        Number.isFinite(this.minBaseAmount) && this.minBaseAmount! > 0
+          ? this.minBaseAmount!
+          : Math.max(this.config.tradeAmount, this.qtyStep);
+      let absPosition = rawAbsPosition;
+      const tinySpotPosition =
+        isSpotMarket &&
+        minSell > 0 &&
+        rawAbsPosition > EPS &&
+        rawAbsPosition + EPS < minSell;
+      if (tinySpotPosition) {
+        absPosition = 0; // treat as flat to allow buys to accumulate until reaching minimum sell size
+      }
       const desired: DesiredOrder[] = [];
       const canEnter = !this.rateLimit.shouldBlockEntries();
 
       if (absPosition < EPS && isSpotMarket) {
         this.entryPricePendingLogged = false;
+        const baseAvail = balancesForSpot?.baseAvailable ?? 0;
+        const baseWallet = balancesForSpot?.baseWallet ?? baseAvail;
+        const maxBase = Math.max(baseAvail, baseWallet);
+        if (isSpotMarket && minSell > 0 && maxBase + EPS < minSell) {
+          // 无法卖出，跳过卖单，允许买单累计
+          this.lastSellPriceViable = false;
+          if (!skipSellSide) {
+            this.tradeLog.push("info", "现货持仓低于最小卖单量，暂不挂卖单");
+          }
+        }
         if (!skipBuySide && canEnter) {
           const buyAmount = this.computeSpotOrderSize({
             side: "BUY",
@@ -369,24 +394,35 @@ export class OffsetMakerEngine {
           }
         }
         if (!skipSellSide && canEnter) {
-          const desiredSellAmount =
-            isSpotMarket && balancesForSpot ? balancesForSpot.baseAvailable : this.config.tradeAmount;
-          const sellAmount = this.computeSpotOrderSize({
-            side: "SELL",
-            desiredAmount: desiredSellAmount,
-            price: askPrice != null ? Number(askPrice) : null,
-            balances: balancesForSpot,
-          });
-          if (askPrice != null && sellAmount >= EPS) {
-            this.lastSellPriceViable = true;
-            desired.push({ side: "SELL", price: askPrice, amount: sellAmount, reduceOnly: false });
-          } else if (this.lastSellPriceViable) {
-            this.lastSellPriceViable = false;
-            const reason =
-              sellAmount < EPS && isSpotMarket
-                ? "现货可用基础资产不足，跳过卖单"
-                : "跳过卖单：价差不足以构造maker价格";
-            this.tradeLog.push("info", reason);
+          const baseAvail = balancesForSpot?.baseAvailable ?? 0;
+          const baseWallet = balancesForSpot?.baseWallet ?? baseAvail;
+          const maxBase = Math.max(baseAvail, baseWallet);
+          if (isSpotMarket && minSell > 0 && maxBase + EPS < minSell) {
+            // 持仓低于最小卖单量，跳过卖单，等待累积
+            if (this.lastSellPriceViable) {
+              this.lastSellPriceViable = false;
+              this.tradeLog.push("info", "现货持仓低于最小卖单量，跳过卖单");
+            }
+          } else {
+            const desiredSellAmount =
+              isSpotMarket && balancesForSpot ? balancesForSpot.baseAvailable : this.config.tradeAmount;
+            const sellAmount = this.computeSpotOrderSize({
+              side: "SELL",
+              desiredAmount: desiredSellAmount,
+              price: askPrice != null ? Number(askPrice) : null,
+              balances: balancesForSpot,
+            });
+            if (askPrice != null && sellAmount >= EPS) {
+              this.lastSellPriceViable = true;
+              desired.push({ side: "SELL", price: askPrice, amount: sellAmount, reduceOnly: false });
+            } else if (this.lastSellPriceViable) {
+              this.lastSellPriceViable = false;
+              const reason =
+                sellAmount < EPS && isSpotMarket
+                  ? "现货可用基础资产不足，跳过卖单"
+                  : "跳过卖单：价差不足以构造maker价格";
+              this.tradeLog.push("info", reason);
+            }
           }
         }
       } else if (absPosition < EPS) {
@@ -395,20 +431,37 @@ export class OffsetMakerEngine {
           desired.push({ side: "BUY", price: bidPrice, amount: this.config.tradeAmount, reduceOnly: false });
         }
         if (!skipSellSide && canEnter) {
+          if (isSpotMarket && minSell > 0 && this.minBaseAmount != null) {
+            const baseAvail = balancesForSpot?.baseAvailable ?? 0;
+            const baseWallet = balancesForSpot?.baseWallet ?? baseAvail;
+            if (Math.max(baseAvail, baseWallet) + EPS < minSell) {
+              this.lastSellPriceViable = false;
+              this.tradeLog.push("info", "现货持仓低于最小卖单量，跳过卖单");
+            }
+          }
           desired.push({ side: "SELL", price: askPrice, amount: this.config.tradeAmount, reduceOnly: false });
         }
       } else {
         const closeSide: "BUY" | "SELL" = position.positionAmt > 0 ? "SELL" : "BUY";
         const closePrice = closeSide === "SELL" ? closeAskPrice : closeBidPrice;
+        if (isSpotMarket && minSell > 0 && rawAbsPosition + EPS < minSell) {
+          // 持仓未达最小卖出量，等待累积，不下单
+          this.lastSellPriceViable = false;
+          this.lastBuyPriceViable = false;
+          this.desiredOrders = [];
+          this.sessionVolume.update(position, this.getReferencePrice());
+          this.emitUpdate();
+          return;
+        }
         const closeQty =
           isSpotMarket && balancesForSpot
             ? this.computeSpotOrderSize({
                 side: "SELL",
-                desiredAmount: absPosition,
+                desiredAmount: rawAbsPosition,
                 price: closePrice != null ? Number(closePrice) : null,
                 balances: balancesForSpot,
               })
-            : absPosition;
+            : rawAbsPosition;
         if (closePrice != null && closeQty >= EPS) {
           desired.push({ side: closeSide, price: closePrice, amount: closeQty, reduceOnly: false });
         }
@@ -631,6 +684,19 @@ export class OffsetMakerEngine {
     for (const target of toPlace) {
       if (!target) continue;
       if (target.amount < EPS) continue;
+      if (
+        this.marketType === "spot" &&
+        this.minBaseAmount != null &&
+        target.side === "SELL" &&
+        target.amount + EPS < this.minBaseAmount
+      ) {
+        // Skip placing sells that would be bumped by venue minimums
+        if (this.lastSellPriceViable) {
+          this.lastSellPriceViable = false;
+          this.tradeLog.push("info", "现货卖单低于最小成交量，跳过挂单等待累积");
+        }
+        continue;
+      }
       try {
         const reduceOnlyFlag = this.marketType === "spot" ? false : target.reduceOnly;
         await placeOrder(
@@ -813,6 +879,12 @@ export class OffsetMakerEngine {
             updated = true;
           }
         }
+        if (Number.isFinite(precision.minBaseAmount)) {
+          this.minBaseAmount = precision.minBaseAmount!;
+        }
+        if (Number.isFinite(precision.minQuoteAmount)) {
+          this.minQuoteAmount = precision.minQuoteAmount!;
+        }
         if (updated) {
           this.tradeLog.push(
             "info",
@@ -936,6 +1008,9 @@ export class OffsetMakerEngine {
     if (!params.balances) return desired;
     if (params.side === "SELL") {
       const cap = Math.max(0, params.balances.baseAvailable, params.balances.baseWallet ?? 0);
+      if (this.minBaseAmount != null && cap + EPS < this.minBaseAmount) {
+        return 0; // below venue min trade size; skip sell until enough balance
+      }
       return this.roundToStep(Math.max(0, Math.min(desired, cap)));
     }
     const price = Number(params.price);
