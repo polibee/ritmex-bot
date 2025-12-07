@@ -222,6 +222,7 @@ export class LighterGateway {
 
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempts = 0;
   private readonly wsUrl: string;
   private connectPromise: Promise<void> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -696,6 +697,8 @@ export class LighterGateway {
       ws.on("open", async () => {
         try {
           this.lastMessageAt = Date.now();
+          this.lastDepthUpdateAt = this.lastMessageAt;
+          this.staleReason = null;
           this.startHeartbeat();
           this.startClientPing();
           await this.subscribeChannels();
@@ -906,10 +909,20 @@ export class LighterGateway {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer) return;
+    const attempt = this.reconnectAttempts + 1;
+    const delay = Math.min(2000 * attempt, 30_000);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      this.openWebSocket().catch((error) => this.logger("reconnect", error));
-    }, 2000);
+      this.openWebSocket()
+        .then(() => {
+          this.reconnectAttempts = 0;
+        })
+        .catch((error) => {
+          this.logger("reconnect", error);
+          this.reconnectAttempts = attempt;
+          this.scheduleReconnect();
+        });
+    }, delay);
   }
 
   private forceReconnect(reason: string): void {
