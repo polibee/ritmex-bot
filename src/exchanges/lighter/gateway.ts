@@ -623,9 +623,17 @@ export class LighterGateway {
   }
 
   private applyAccountAssets(assets?: LighterAccountAsset[] | Record<string, LighterAccountAsset> | null): void {
+    const payloadProvided = assets !== undefined && assets !== null;
+    const hasRawEntries =
+      Array.isArray(assets) ? assets.length > 0 : isPlainObject(assets) ? Object.keys(assets).length > 0 : false;
     const normalized = this.normalizeAssets(assets);
     if (!normalized.length) {
-      return; // ignore empty payloads to avoid wiping spot balances
+      // Explicitly clear cached balances when the venue returns an empty payload,
+      // so closed spot positions don't linger as phantom holdings.
+      if (payloadProvided && !hasRawEntries) {
+        this.assets.clear();
+      }
+      return;
     }
     for (const asset of normalized) {
       const key = this.normalizeAssetKey(asset);

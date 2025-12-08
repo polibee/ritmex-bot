@@ -301,11 +301,3 @@ function normalizeSymbolForms(value: string): string[] {
   if (base) forms.add(base);
   return Array.from(forms);
 }
-
-function normalizeMarketType(value: string | null | undefined): "perp" | "spot" | undefined {
-  if (!value) return undefined;
-  const normalized = value.toLowerCase();
-  if (normalized === "spot") return "spot";
-  if (normalized === "perp" || normalized === "perpetual" || normalized === "futures") return "perp";
-  return undefined;
-}
