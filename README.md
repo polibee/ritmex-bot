@@ -14,6 +14,7 @@ A Bun-powered multi-exchange perpetuals workstation that ships an SMA30 trend en
 * [Aster 手续费优惠注册链接](https://www.asterdex.com/zh-CN/referral/4665f3)
 * [Binance 手续费优惠注册链接](https://www.binance.com/join?ref=KNKCA9XC)
 * [GRVT 手续费优惠注册链接](https://grvt.io/exchange/sign-up?ref=sea)
+* [Nado 手续费优惠注册链接](https://app.nado.xyz?join=LKbIUs5)
 * [Backpack 手续费优惠注册链接](https://backpack.exchange/join/ritmex)
 * [edgex 手续费优惠注册链接](https://pro.edgex.exchange/referral/BULL)
 * [Paradex 手续费优惠注册链接](https://paradex.io/ref/xingxingjun)
@@ -133,9 +134,10 @@ curl -fsSL https://github.com/discountry/ritmex-bot/raw/refs/heads/main/setup.sh
 
 ### Nado
 1. 设置 `EXCHANGE=nado`。
-2. 提供 `NADO_SIGNER_PRIVATE_KEY`（已 link 的 Signer 私钥）与 `NADO_SUBACCOUNT_OWNER`（或 `NADO_EVM_ADDRESS`）。
-3. 选择网络 `NADO_ENV=inkMainnet`（主网）或 `inkTestnet`（测试网）。
-4. 设置交易品种 `NADO_SYMBOL`（例如 `BTC-PERP`；也支持输入 `BTCUSDT0`，会自动映射为 `BTC-PERP`）。
+2. 在 Nado 官网（交易界面）打开开发者工具（F12）→ 切换到 `Application` → `Local Storage`，找到 `nado.userSettings`，在其内容中取出 `privateKey` 字段并填入 `.env` 的 `NADO_SIGNER_PRIVATE_KEY`。
+3. 提供 `NADO_SUBACCOUNT_OWNER`（或 `NADO_EVM_ADDRESS`）。
+4. 选择网络 `NADO_ENV=inkMainnet`（主网）或 `inkTestnet`（测试网）。
+5. 设置交易品种 `NADO_SYMBOL`（交易对格式类似 `BTC-PERP`；也支持输入 `BTCUSDT0`，会自动映射为 `BTC-PERP`）。
 
 ## 命令速查
 ```bash

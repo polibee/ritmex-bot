@@ -6,6 +6,7 @@ A Bun-powered multi-exchange perpetuals workstation that ships an SMA30 trend en
 * [Aster referral link](https://www.asterdex.com/en/referral/4665f3)
 * [Binance referral link](https://www.binance.com/join?ref=KNKCA9XC)
 * [GRVT referral link](https://grvt.io/exchange/sign-up?ref=sea)
+* [Nado referral link](https://app.nado.xyz?join=LKbIUs5)
 * [Backpack referral link](https://backpack.exchange/join/ritmex)
 * [edgex referral link](https://pro.edgex.exchange/referral/BULL)
 * [Paradex referral link](https://paradex.io/ref/xingxingjun)
@@ -125,9 +126,10 @@ The script installs Bun, project dependencies, collects Aster API credentials, g
 
 ### Nado
 1. Set `EXCHANGE=nado`.
-2. Provide `NADO_SIGNER_PRIVATE_KEY` (linked signer) and `NADO_SUBACCOUNT_OWNER` (or `NADO_EVM_ADDRESS`).
-3. Select network via `NADO_ENV=inkMainnet` (mainnet) or `inkTestnet` (testnet).
-4. Set `NADO_SYMBOL` (for example `BTC-PERP`; `BTCUSDT0` is also accepted and mapped to `BTC-PERP`).
+2. On the Nado web app, open DevTools → switch to the `Application` tab → `Local Storage`, locate `nado.userSettings`, then grab the `privateKey` field from its JSON value and paste it into `.env` as `NADO_SIGNER_PRIVATE_KEY`.
+3. Provide `NADO_SUBACCOUNT_OWNER` (or `NADO_EVM_ADDRESS`).
+4. Select network via `NADO_ENV=inkMainnet` (mainnet) or `inkTestnet` (testnet).
+5. Set `NADO_SYMBOL` using Nado product symbols like `BTC-PERP` (it also accepts `BTCUSDT0` and maps it to `BTC-PERP`).
 
 ## Command Cheatsheet
 ```bash
