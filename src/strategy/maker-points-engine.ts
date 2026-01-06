@@ -13,7 +13,7 @@ import { isOrderActiveStatus } from "../utils/order-status";
 import { getPosition, parseSymbolParts } from "../utils/strategy";
 import type { PositionSnapshot } from "../utils/strategy";
 import { computePositionPnl } from "../utils/pnl";
-import { getTopPrices } from "../utils/price";
+import { getMidOrLast, getTopPrices } from "../utils/price";
 import {
   marketClose,
   placeOrder,
@@ -27,7 +27,7 @@ import { StrategyEventEmitter } from "./common/event-emitter";
 import { safeSubscribe, type LogHandler } from "./common/subscriptions";
 import { SessionVolumeTracker } from "./common/session-volume";
 import { BinanceDepthTracker, type BinanceDepthSnapshot } from "./common/binance-depth";
-import { buildBpsTargets, computeDislocationBps } from "./maker-points-logic";
+import { buildBpsTargets } from "./maker-points-logic";
 import { t } from "../i18n";
 
 interface DesiredOrder {
@@ -43,9 +43,6 @@ export interface MakerPointsSnapshot {
   topBid: number | null;
   topAsk: number | null;
   spread: number | null;
-  markPrice: number | null;
-  dislocationBps: number | null;
-  blockedBps: number;
   priceDecimals: number;
   position: PositionSnapshot;
   pnl: number;
@@ -75,7 +72,6 @@ type MakerPointsListener = (snapshot: MakerPointsSnapshot) => void;
 
 const EPS = 1e-5;
 const INSUFFICIENT_BALANCE_COOLDOWN_MS = 15_000;
-const DISLOCATION_THRESHOLD_BPS = 1;
 const STOP_LOSS_COOLDOWN_MS = 10_000;
 
 export class MakerPointsEngine {
@@ -108,9 +104,7 @@ export class MakerPointsEngine {
   private accountUnrealized = 0;
   private initialOrderSnapshotReady = false;
   private initialOrderResetDone = false;
-  private entryPricePendingLogged = false;
   private lastDesiredSummary: string | null = null;
-  private lastDislocationBlock = 0;
   private lastCloseOnly = false;
   private lastSkipBuy = false;
   private lastSkipSell = false;
@@ -340,35 +334,6 @@ export class MakerPointsEngine {
         this.lastCloseOnly = closeOnly;
       }
 
-      const markPrice = this.getMarkPrice();
-      const hasMarkPrice = Number.isFinite(markPrice) && (markPrice ?? 0) > 0;
-      if (!hasMarkPrice && !closeOnly) {
-        if (!this.entryPricePendingLogged) {
-          this.tradeLog.push("info", "等待标记价格推送…");
-          this.entryPricePendingLogged = true;
-        }
-        this.emitUpdate();
-        return;
-      }
-      if (hasMarkPrice) {
-        this.entryPricePendingLogged = false;
-      }
-
-      const resolvedMarkPrice = hasMarkPrice ? Number(markPrice) : 0;
-      const dislocationBps = hasMarkPrice ? computeDislocationBps(resolvedMarkPrice, topBid, topAsk) : null;
-      const blockBps =
-        dislocationBps != null && dislocationBps > DISLOCATION_THRESHOLD_BPS
-          ? Math.floor(dislocationBps + 1e-9)
-          : 0;
-      const prevBlockBps = this.lastDislocationBlock;
-      if (blockBps !== prevBlockBps) {
-        if (blockBps > 0) {
-          this.tradeLog.push("warn", `标记价偏离盘口 ${blockBps} bps，撤销该范围挂单`);
-        } else if (prevBlockBps > 0) {
-          this.tradeLog.push("info", "标记价偏离已恢复，恢复挂单");
-        }
-        this.lastDislocationBlock = blockBps;
-      }
 
       const binanceSnapshot = this.binanceDepth.getSnapshot();
       const rawSkipBuy = Boolean(binanceSnapshot?.skipBuySide);
@@ -388,14 +353,12 @@ export class MakerPointsEngine {
         this.lastSkipSell = skipSell;
       }
 
-      const blockChanged = blockBps !== prevBlockBps;
       const closeOnlyChanged = closeOnly !== prevCloseOnly;
       const skipChanged = skipBuy !== prevSkipBuy || skipSell !== prevSkipSell;
       const repriceNeeded = closeOnly ? true : this.shouldReprice(topBid, topAsk);
       const shouldRecompute =
         closeOnly ||
         repriceNeeded ||
-        blockChanged ||
         closeOnlyChanged ||
         skipChanged ||
         this.desiredOrders.length === 0;
@@ -406,8 +369,6 @@ export class MakerPointsEngine {
           : this.buildDesiredOrders({
               bid1: topBid,
               ask1: topAsk,
-              markPrice: resolvedMarkPrice,
-              blockBps,
               skipBuy,
               skipSell,
             })
@@ -426,7 +387,7 @@ export class MakerPointsEngine {
       this.desiredOrders = desired;
       this.logDesiredOrders(desired);
       this.sessionVolume.update(position, this.getReferencePrice());
-      await this.syncOrders(desired, resolvedMarkPrice, closeOnly);
+      await this.syncOrders(desired, closeOnly);
       this.emitUpdate();
     } catch (error) {
       if (isRateLimitError(error)) {
@@ -446,12 +407,10 @@ export class MakerPointsEngine {
   private buildDesiredOrders(params: {
     bid1: number;
     ask1: number;
-    markPrice: number;
-    blockBps: number;
     skipBuy: boolean;
     skipSell: boolean;
   }): DesiredOrder[] {
-    const { bid1, ask1, markPrice, blockBps, skipBuy, skipSell } = params;
+    const { bid1, ask1, skipBuy, skipSell } = params;
     const amount = Number(this.config.perOrderAmount);
     if (!Number.isFinite(amount) || amount <= 0) return [];
 
@@ -469,12 +428,7 @@ export class MakerPointsEngine {
     for (const bps of targets) {
       if (!skipBuy) {
         const price = bid1 * (1 - bps / 10000);
-        const distanceBps = (markPrice - price) / markPrice * 10000;
-        if (
-          Number.isFinite(price) &&
-          price > 0 &&
-          (!Number.isFinite(distanceBps) || distanceBps > blockBps)
-        ) {
+        if (Number.isFinite(price) && price > 0) {
           desired.push({
             side: "BUY",
             price: formatPriceToString(price, priceDecimals),
@@ -485,12 +439,7 @@ export class MakerPointsEngine {
       }
       if (!skipSell) {
         const price = ask1 * (1 + bps / 10000);
-        const distanceBps = (price - markPrice) / markPrice * 10000;
-        if (
-          Number.isFinite(price) &&
-          price > 0 &&
-          (!Number.isFinite(distanceBps) || distanceBps > blockBps)
-        ) {
+        if (Number.isFinite(price) && price > 0) {
           desired.push({
             side: "SELL",
             price: formatPriceToString(price, priceDecimals),
@@ -574,7 +523,7 @@ export class MakerPointsEngine {
     }
   }
 
-  private async syncOrders(targets: DesiredOrder[], markPrice: number, closeOnly: boolean): Promise<void> {
+  private async syncOrders(targets: DesiredOrder[], closeOnly: boolean): Promise<void> {
     const availableOrders = this.openOrders.filter((o) => !this.pendingCancelOrders.has(String(o.orderId)));
     const openOrders = availableOrders.filter((order) => isOrderActiveStatus(order.status));
     const { toCancel, toPlace } = makeOrderPlan(openOrders, targets);
@@ -626,15 +575,11 @@ export class MakerPointsEngine {
           target.amount,
           (type, detail) => this.tradeLog.push(type, detail),
           target.reduceOnly,
-          closeOnly
-            ? undefined
-            : {
-                markPrice,
-                maxPct: this.config.maxCloseSlippagePct,
-              },
+          undefined,
           {
             priceTick: this.priceTick,
             qtyStep: this.qtyStep,
+            skipDedupe: true,
           }
         );
       } catch (error) {
@@ -783,12 +728,6 @@ export class MakerPointsEngine {
     const position = getPosition(this.accountSnapshot, this.config.symbol);
     const { topBid, topAsk } = getTopPrices(this.depthSnapshot);
     const spread = topBid != null && topAsk != null ? topAsk - topBid : null;
-    const markPrice = this.getMarkPrice();
-    const dislocationBps = computeDislocationBps(markPrice, topBid, topAsk);
-    const blockBps =
-      dislocationBps != null && dislocationBps > DISLOCATION_THRESHOLD_BPS
-        ? Math.floor(dislocationBps + 1e-9)
-        : 0;
     const pnl = computePositionPnl(position, topBid, topAsk);
 
     return {
@@ -797,9 +736,6 @@ export class MakerPointsEngine {
       topBid,
       topAsk,
       spread,
-      markPrice,
-      dislocationBps,
-      blockedBps: blockBps,
       priceDecimals: this.getPriceDecimals(),
       position,
       pnl,
@@ -820,19 +756,7 @@ export class MakerPointsEngine {
   }
 
   private getReferencePrice(): number | null {
-    const mark = Number(this.tickerSnapshot?.markPrice);
-    if (Number.isFinite(mark) && mark > 0) return mark;
-    const last = Number(this.tickerSnapshot?.lastPrice);
-    return Number.isFinite(last) && last > 0 ? last : null;
-  }
-
-  private getMarkPrice(): number | null {
-    const mark = Number(this.tickerSnapshot?.markPrice);
-    if (Number.isFinite(mark) && mark > 0) return mark;
-    const positionMark = Number(getPosition(this.accountSnapshot, this.config.symbol).markPrice);
-    if (Number.isFinite(positionMark) && positionMark > 0) return positionMark;
-    const last = Number(this.tickerSnapshot?.lastPrice);
-    return Number.isFinite(last) && last > 0 ? last : null;
+    return getMidOrLast(this.depthSnapshot, this.tickerSnapshot);
   }
 
   private logReadinessBlockers(): void {

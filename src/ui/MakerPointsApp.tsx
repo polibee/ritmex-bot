@@ -79,10 +79,6 @@ export function MakerPointsApp({ onExit }: MakerPointsAppProps) {
   const spreadDisplay =
     snapshot.spread != null ? `${formatNumber(snapshot.spread, spreadDigits)} USDT` : "-";
   const hasPosition = Math.abs(snapshot.position.positionAmt) > 1e-5;
-  const markDisplay = Number.isFinite(snapshot.markPrice) ? formatNumber(snapshot.markPrice, priceDigits) : "-";
-  const dislocationDisplay =
-    snapshot.dislocationBps != null ? formatNumber(snapshot.dislocationBps, 2) : "-";
-  const blockDisplay = snapshot.blockedBps > 0 ? String(snapshot.blockedBps) : "-";
 
   const sortedOrders = [...snapshot.openOrders].sort((a, b) =>
     (Number(b.updateTime ?? 0) - Number(a.updateTime ?? 0)) || Number(b.orderId) - Number(a.orderId)
@@ -151,13 +147,6 @@ export function MakerPointsApp({ onExit }: MakerPointsAppProps) {
             bid: formatNumber(topBid, priceDigits),
             ask: formatNumber(topAsk, priceDigits),
             spread: spreadDisplay,
-          })}
-        </Text>
-        <Text>
-          {t("makerPoints.markLine", {
-            mark: markDisplay,
-            bps: dislocationDisplay,
-            block: blockDisplay,
           })}
         </Text>
         <Text color="gray">{t("trend.statusLine", { status: readyStatus })}</Text>
@@ -247,4 +236,3 @@ export function MakerPointsApp({ onExit }: MakerPointsAppProps) {
     </Box>
   );
 }
-

@@ -185,10 +185,6 @@ const translations: Record<string, TranslationEntry> = {
     zh: "交易所: {exchange} ｜ 交易对: {symbol} ｜ 买一价: {bid} ｜ 卖一价: {ask} ｜ 点差: {spread}",
     en: "Exchange: {exchange} | Symbol: {symbol} | Best Bid: {bid} | Best Ask: {ask} | Spread: {spread}",
   },
-  "makerPoints.markLine": {
-    zh: "标记价: {mark} ｜ 偏离: {bps} bps ｜ 阻断: {block} bps",
-    en: "Mark: {mark} | Dislocation: {bps} bps | Block: {block} bps",
-  },
   "makerPoints.quoteLine": {
     zh: "挂单模式: {mode} ｜ BUY {buy} ｜ SELL {sell}",
     en: "Quote mode: {mode} | BUY {buy} | SELL {sell}",
