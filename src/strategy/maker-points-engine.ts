@@ -29,6 +29,17 @@ import { SessionVolumeTracker } from "./common/session-volume";
 import { BinanceDepthTracker, type BinanceDepthSnapshot } from "./common/binance-depth";
 import { buildBpsTargets } from "./maker-points-logic";
 import { t } from "../i18n";
+import {
+  checkStandxTokenExpiry,
+  formatTokenExpiryMessage,
+  isTokenExpiryConfigured,
+  type TokenExpiryState,
+} from "../utils/standx-token-expiry";
+import {
+  createTelegramNotifier,
+  type NotificationSender,
+  type TradeNotification,
+} from "../notifications";
 
 interface DesiredOrder {
   side: "BUY" | "SELL";
@@ -90,6 +101,7 @@ export class MakerPointsEngine {
   private readonly sessionVolume = new SessionVolumeTracker();
   private readonly rateLimit: RateLimitController;
   private readonly binanceDepth: BinanceDepthTracker;
+  private readonly notifier: NotificationSender;
 
   private priceTick: number = 0.1;
   private qtyStep: number = 0.001;
@@ -128,11 +140,21 @@ export class MakerPointsEngine {
   private insufficientBalanceNotified = false;
   private lastInsufficientMessage: string | null = null;
 
+  private tokenExpiryState: TokenExpiryState = "active";
+  private tokenExpiryLogged = false;
+  private tokenExpiryCancelDone = false;
+  private tokenExpiredCloseOnlyMode = false;
+  private tokenExpiryNotified = false;
+
+  private lastPositionAmt = 0;
+  private lastPositionSide: "LONG" | "SHORT" | "FLAT" = "FLAT";
+
   constructor(private readonly config: MakerPointsConfig, private readonly exchange: ExchangeAdapter) {
     this.tradeLog = createTradeLog(this.config.maxLogEntries);
     this.rateLimit = new RateLimitController(this.config.refreshIntervalMs, (type, detail) =>
       this.tradeLog.push(type, detail)
     );
+    this.notifier = createTelegramNotifier();
     this.priceTick = Math.max(1e-9, this.config.priceTick);
     this.qtyStep = Math.max(1e-9, this.config.qtyStep);
     this.binanceDepth = new BinanceDepthTracker(resolveBinanceSymbol(this.config.symbol), {
@@ -201,6 +223,7 @@ export class MakerPointsEngine {
         }
         const position = getPosition(snapshot, this.config.symbol);
         this.sessionVolume.update(position, this.getReferencePrice());
+        this.detectPositionChange(position);
         this.feedStatus.account = true;
         this.emitUpdate();
       },
@@ -314,6 +337,14 @@ export class MakerPointsEngine {
         return;
       }
 
+      const position = getPosition(this.accountSnapshot, this.config.symbol);
+      const absPosition = Math.abs(position.positionAmt);
+
+      if (await this.handleTokenExpiry(position, absPosition)) {
+        this.emitUpdate();
+        return;
+      }
+
       const depth = this.depthSnapshot!;
       const { topBid, topAsk } = getTopPrices(depth);
       if (topBid == null || topAsk == null) {
@@ -321,13 +352,12 @@ export class MakerPointsEngine {
         return;
       }
 
-      const position = getPosition(this.accountSnapshot, this.config.symbol);
-      const absPosition = Math.abs(position.positionAmt);
       const closeThreshold = Number(this.config.closeThreshold);
       const closeOnly =
-        Number.isFinite(closeThreshold) &&
+        this.tokenExpiredCloseOnlyMode ||
+        (Number.isFinite(closeThreshold) &&
         closeThreshold > 0 &&
-        absPosition >= closeThreshold - EPS;
+        absPosition >= closeThreshold - EPS);
       const prevCloseOnly = this.lastCloseOnly;
       if (closeOnly !== prevCloseOnly) {
         this.tradeLog.push("info", closeOnly ? "进入平仓模式，仅挂 reduce-only" : "退出平仓模式");
@@ -615,6 +645,19 @@ export class MakerPointsEngine {
       "stop",
       `触发止损: 未实现亏损 ${position.unrealizedProfit.toFixed(4)} USDT`
     );
+    this.notifier.send({
+      type: "stop_loss",
+      level: "error",
+      symbol: this.config.symbol,
+      title: "止损触发",
+      message: `未实现亏损 ${position.unrealizedProfit.toFixed(4)} USDT，强制平仓`,
+      details: {
+        side: position.positionAmt > 0 ? "LONG" : "SHORT",
+        size: absPosition,
+        unrealizedPnl: position.unrealizedProfit,
+        lossLimit: -lossLimit,
+      },
+    });
     try {
       await this.flushOrders();
       await marketClose(
@@ -827,6 +870,180 @@ export class MakerPointsEngine {
       this.lastInsufficientMessage = null;
     }
     return active;
+  }
+
+  private detectPositionChange(position: PositionSnapshot): void {
+    const currentAmt = position.positionAmt;
+    const currentSide: "LONG" | "SHORT" | "FLAT" =
+      currentAmt > EPS ? "LONG" : currentAmt < -EPS ? "SHORT" : "FLAT";
+    const prevAmt = this.lastPositionAmt;
+    const prevSide = this.lastPositionSide;
+
+    if (Math.abs(currentAmt - prevAmt) < EPS && currentSide === prevSide) {
+      return;
+    }
+
+    const absChange = Math.abs(currentAmt - prevAmt);
+    const reference = this.getReferencePrice() ?? 0;
+
+    if (prevSide === "FLAT" && currentSide !== "FLAT") {
+      this.notifier.send({
+        type: "position_opened",
+        level: "info",
+        symbol: this.config.symbol,
+        title: "开仓",
+        message: `${currentSide === "LONG" ? "做多" : "做空"} ${Math.abs(currentAmt).toFixed(6)}`,
+        details: {
+          side: currentSide,
+          size: Math.abs(currentAmt),
+          price: reference > 0 ? reference : null,
+        },
+      });
+    } else if (currentSide === "FLAT" && prevSide !== "FLAT") {
+      const pnl = position.unrealizedProfit;
+      const closeType = this.tokenExpiredCloseOnlyMode ? "Token过期平仓" : "平仓";
+      this.notifier.send({
+        type: "position_closed",
+        level: "success",
+        symbol: this.config.symbol,
+        title: closeType,
+        message: `已平仓 ${Math.abs(prevAmt).toFixed(6)} (${prevSide === "LONG" ? "多" : "空"})`,
+        details: {
+          prevSide,
+          closedSize: Math.abs(prevAmt),
+          pnl: Number.isFinite(pnl) ? pnl : null,
+        },
+      });
+    } else if (currentSide === prevSide && absChange > EPS) {
+      const isIncrease = Math.abs(currentAmt) > Math.abs(prevAmt);
+      if (isIncrease) {
+        this.notifier.send({
+          type: "order_filled",
+          level: "info",
+          symbol: this.config.symbol,
+          title: "加仓",
+          message: `${currentSide === "LONG" ? "做多" : "做空"} +${absChange.toFixed(6)} → ${Math.abs(currentAmt).toFixed(6)}`,
+          details: {
+            side: currentSide,
+            added: absChange,
+            totalSize: Math.abs(currentAmt),
+          },
+        });
+      } else {
+        this.notifier.send({
+          type: "order_filled",
+          level: "info",
+          symbol: this.config.symbol,
+          title: "减仓",
+          message: `${currentSide === "LONG" ? "多" : "空"} -${absChange.toFixed(6)} → ${Math.abs(currentAmt).toFixed(6)}`,
+          details: {
+            side: currentSide,
+            reduced: absChange,
+            totalSize: Math.abs(currentAmt),
+          },
+        });
+      }
+    } else if (currentSide !== prevSide && currentSide !== "FLAT" && prevSide !== "FLAT") {
+      this.notifier.send({
+        type: "position_opened",
+        level: "info",
+        symbol: this.config.symbol,
+        title: "反向开仓",
+        message: `${prevSide === "LONG" ? "多→空" : "空→多"} ${Math.abs(currentAmt).toFixed(6)}`,
+        details: {
+          prevSide,
+          newSide: currentSide,
+          size: Math.abs(currentAmt),
+        },
+      });
+    }
+
+    this.lastPositionAmt = currentAmt;
+    this.lastPositionSide = currentSide;
+  }
+
+  private async handleTokenExpiry(position: PositionSnapshot, absPosition: number): Promise<boolean> {
+    if (!isTokenExpiryConfigured()) {
+      return false;
+    }
+
+    const expiryStatus = checkStandxTokenExpiry({
+      positionAmt: position.positionAmt,
+      openOrderCount: this.openOrders.length,
+    });
+
+    if (!expiryStatus.expired) {
+      if (this.tokenExpiryState !== "active") {
+        this.tokenExpiryState = "active";
+        this.tokenExpiryLogged = false;
+        this.tokenExpiryCancelDone = false;
+        this.tokenExpiredCloseOnlyMode = false;
+        this.tokenExpiryNotified = false;
+      }
+      return false;
+    }
+
+    const prevState = this.tokenExpiryState;
+    this.tokenExpiryState = expiryStatus.state;
+
+    if (!this.tokenExpiryLogged) {
+      const message = formatTokenExpiryMessage(expiryStatus);
+      if (message) {
+        this.tradeLog.push("warn", message);
+      }
+      this.tokenExpiryLogged = true;
+    }
+
+    if (!this.tokenExpiryNotified) {
+      this.notifier.send({
+        type: "token_expired",
+        level: "warn",
+        symbol: this.config.symbol,
+        title: "Token 已过期",
+        message: expiryStatus.hasPosition
+          ? "Token 已过期，进入平仓模式，不再开新仓"
+          : "Token 已过期，策略进入静默模式",
+        details: {
+          hasPosition: expiryStatus.hasPosition,
+          hasOpenOrders: expiryStatus.hasOpenOrders,
+          state: expiryStatus.state,
+        },
+      });
+      this.tokenExpiryNotified = true;
+    }
+
+    if (!this.tokenExpiryCancelDone && this.openOrders.length > 0) {
+      try {
+        await this.exchange.cancelAllOrders({ symbol: this.config.symbol });
+        this.tradeLog.push("order", "Token 过期，已撤销所有挂单");
+        this.openOrders = [];
+        this.tokenExpiryCancelDone = true;
+      } catch (error) {
+        if (isUnknownOrderError(error)) {
+          this.tradeLog.push("order", "Token 过期撤单时订单已不存在");
+          this.tokenExpiryCancelDone = true;
+        } else {
+          this.tradeLog.push("error", `Token 过期撤单失败: ${extractMessage(error)}`);
+        }
+      }
+    }
+
+    if (expiryStatus.state === "expired_with_position") {
+      if (!this.tokenExpiredCloseOnlyMode) {
+        this.tokenExpiredCloseOnlyMode = true;
+        this.tradeLog.push("info", "Token 过期，强制进入平仓模式，仅允许 reduce-only 订单");
+      }
+      return false;
+    }
+
+    if (expiryStatus.state === "silent") {
+      if (prevState !== "silent") {
+        this.tradeLog.push("info", "进入静默数据接收模式，不再进行任何交易操作");
+      }
+      return true;
+    }
+
+    return true;
   }
 }
 

@@ -6,6 +6,45 @@
 import { resolveExchangeId, type SupportedExchangeId } from "./exchanges/create-adapter";
 import { language, type Language } from "./i18n";
 
+export interface StandxTokenConfig {
+  expiryTimestamp: number | null;
+}
+
+function parseTimestamp(value: string | undefined): number | null {
+  if (!value || !value.trim()) return null;
+  const trimmed = value.trim();
+  const asNumber = Number(trimmed);
+  if (Number.isFinite(asNumber) && asNumber > 0) {
+    return asNumber < 1e12 ? asNumber * 1000 : asNumber;
+  }
+  const asDate = Date.parse(trimmed);
+  if (Number.isFinite(asDate) && asDate > 0) {
+    return asDate;
+  }
+  return null;
+}
+
+export const standxTokenConfig: StandxTokenConfig = {
+  expiryTimestamp: parseTimestamp(process.env.STANDX_TOKEN_EXPIRY),
+};
+
+export function isStandxTokenExpired(): boolean {
+  const expiry = standxTokenConfig.expiryTimestamp;
+  if (expiry == null) return false;
+  return Date.now() >= expiry;
+}
+
+export function getStandxTokenExpiryInfo(): { expired: boolean; expiryTimestamp: number | null; remainingMs: number | null } {
+  const expiry = standxTokenConfig.expiryTimestamp;
+  if (expiry == null) {
+    return { expired: false, expiryTimestamp: null, remainingMs: null };
+  }
+  const now = Date.now();
+  const expired = now >= expiry;
+  const remainingMs = expired ? 0 : expiry - now;
+  return { expired, expiryTimestamp: expiry, remainingMs };
+}
+
 export interface TradingConfig {
   symbol: string;
   tradeAmount: number;

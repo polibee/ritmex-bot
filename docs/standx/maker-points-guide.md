@@ -146,6 +146,22 @@ MAKER_POINTS_MIN_REPRICE_BPS=3
 MAKER_POINTS_BAND_0_10=true
 MAKER_POINTS_BAND_10_30=true
 MAKER_POINTS_BAND_30_100=true
+
+# ===== Token 过期时间配置（可选） =====
+# 配置 Token 过期时间后，策略会在 Token 过期前提醒你，过期后自动进入安全模式
+# 格式1：时间戳（毫秒），例如：1735689600000
+# 格式2：时间戳（秒），例如：1735689600（会自动转换为毫秒）
+# 格式3：ISO 日期字符串，例如：2025-01-01T00:00:00Z
+# 如果不配置此项，策略不会检查 Token 过期时间
+# STANDX_TOKEN_EXPIRY=1735689600000
+
+# ===== Telegram 通知配置（可选） =====
+# 配置后，策略会通过 Telegram 发送重要通知（订单成交、开仓、平仓、止损、Token过期等）
+# 如何获取 Bot Token：在 Telegram 搜索 @BotFather，发送 /newbot 创建机器人，获取 Token
+# 如何获取 Chat ID：在 Telegram 搜索 @userinfobot，发送任意消息即可看到你的 Chat ID
+# TELEGRAM_BOT_TOKEN=你的BotToken
+# TELEGRAM_CHAT_ID=你的ChatID
+# TELEGRAM_ACCOUNT_LABEL=我的账户（可选，用于区分多个账户的通知）
 ```
 
 ### 正确填写示例
@@ -168,6 +184,9 @@ MAKER_POINTS_MIN_REPRICE_BPS=3
 MAKER_POINTS_BAND_0_10=true
 MAKER_POINTS_BAND_10_30=true
 MAKER_POINTS_BAND_30_100=true
+# STANDX_TOKEN_EXPIRY=1735689600000
+# TELEGRAM_BOT_TOKEN=你的BotToken
+# TELEGRAM_CHAT_ID=你的ChatID
 ```
 
 > 🔴 **不要加引号！不要加空格！直接粘贴值！**
@@ -203,6 +222,79 @@ bun run pm2:start:maker-points
 | `MAKER_POINTS_CLOSE_THRESHOLD` | 持仓达到多少开始平仓 | 设为 `0` 表示不自动平仓 |
 | `MAKER_POINTS_STOP_LOSS_USD` | 亏损多少美元强制平仓 | 设为 `0` 表示关闭止损 |
 | `MAKER_POINTS_BAND_*` | 三个挂单档位的开关 | 全部 `true` 即可 |
+| `STANDX_TOKEN_EXPIRY` | Token 过期时间 | 可选，格式见下方说明 |
+| `TELEGRAM_BOT_TOKEN` | Telegram 机器人 Token | 可选，用于接收通知 |
+| `TELEGRAM_CHAT_ID` | Telegram 聊天 ID | 可选，配合 Bot Token 使用 |
+| `TELEGRAM_ACCOUNT_LABEL` | Telegram 通知账户标签 | 可选，用于区分多个账户 |
+
+### Token 过期时间配置详解
+
+`STANDX_TOKEN_EXPIRY` 用于设置 Token 的过期时间。配置后，策略会：
+
+1. **Token 过期前 1 小时**：在日志中提醒你 Token 即将过期
+2. **Token 过期后**：
+   - 如果有持仓：进入**平仓模式**，只允许平仓和止损，不再开新仓
+   - 如果无持仓但有挂单：**自动取消所有挂单**
+   - 如果无持仓无挂单：进入**静默模式**，只接收数据，不下单
+
+**支持的格式：**
+- **时间戳（毫秒）**：`1735689600000`
+- **时间戳（秒）**：`1735689600`（会自动转换为毫秒）
+- **ISO 日期字符串**：`2025-01-01T00:00:00Z` 或 `2025-01-01 00:00:00`
+
+**如何获取 Token 过期时间？**
+
+登录 standx.ritmex.one 时，系统会返回 Token 的有效期。你可以在导出登录信息时查看，或者根据登录时设置的过期时间计算。
+
+**示例：**
+```bash
+# 方式1：使用时间戳（毫秒）
+STANDX_TOKEN_EXPIRY=1735689600000
+
+# 方式2：使用时间戳（秒）
+STANDX_TOKEN_EXPIRY=1735689600
+
+# 方式3：使用 ISO 日期字符串
+STANDX_TOKEN_EXPIRY=2025-01-01T00:00:00Z
+```
+
+> 💡 **提示**：如果不配置此项，策略不会检查 Token 过期时间，但建议配置以便及时收到提醒。
+
+### Telegram 通知配置详解
+
+配置 Telegram 通知后，策略会在以下情况发送通知：
+
+- 📝 **订单成交**：挂单被成交时
+- 📈 **开仓**：持仓从 0 变为非 0 时
+- 📉 **平仓**：持仓从非 0 变为 0 时
+- 🛑 **止损触发**：触发止损平仓时
+- ⏰ **Token 过期**：Token 过期时
+
+**配置步骤：**
+
+1. **创建 Telegram 机器人**：
+   - 在 Telegram 搜索 `@BotFather`
+   - 发送 `/newbot` 命令
+   - 按提示设置机器人名称和用户名
+   - 获取 Bot Token（格式类似：`123456789:ABCdefGHIjklMNOpqrsTUVwxyz`）
+
+2. **获取你的 Chat ID**：
+   - 在 Telegram 搜索 `@userinfobot`
+   - 发送任意消息
+   - 机器人会返回你的 Chat ID（一串数字，例如：`123456789`）
+
+3. **配置环境变量**：
+   ```bash
+   TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+   TELEGRAM_CHAT_ID=123456789
+   TELEGRAM_ACCOUNT_LABEL=我的账户（可选）
+   ```
+
+4. **测试通知**：
+   - 启动策略后，如果配置正确，会在 Token 过期或重要事件时收到通知
+   - 如果收不到通知，检查 Bot Token 和 Chat ID 是否正确
+
+> 💡 **提示**：`TELEGRAM_ACCOUNT_LABEL` 是可选的，如果你有多个账户在运行策略，可以用这个标签区分不同账户的通知。
 
 ---
 
@@ -232,6 +324,17 @@ bun run pm2:start:maker-points
 ### Q：担心平掉我手动开的仓位？
 
 把 `MAKER_POINTS_CLOSE_THRESHOLD` 设为 `0` 或者设置成一个比你持仓大的数字。
+
+### Q：如何知道 Token 什么时候过期？
+
+配置 `STANDX_TOKEN_EXPIRY` 环境变量，策略会在 Token 过期前 1 小时提醒你。Token 过期后，如果有持仓会进入平仓模式，只允许平仓和止损。
+
+### Q：Telegram 通知收不到怎么办？
+
+1. 检查 `TELEGRAM_BOT_TOKEN` 和 `TELEGRAM_CHAT_ID` 是否正确填写
+2. 确保没有在 Bot Token 和 Chat ID 前后加引号或空格
+3. 在 Telegram 中先给机器人发送一条消息（任意内容），然后再启动策略
+4. 检查网络连接是否正常
 
 ---
 
