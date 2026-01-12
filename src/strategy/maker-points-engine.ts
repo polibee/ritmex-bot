@@ -84,7 +84,6 @@ type MakerPointsListener = (snapshot: MakerPointsSnapshot) => void;
 const EPS = 1e-5;
 const INSUFFICIENT_BALANCE_COOLDOWN_MS = 15_000;
 const STOP_LOSS_COOLDOWN_MS = 10_000;
-const TELEGRAM_LOG_PREFIX = "[Telegram]";
 
 export class MakerPointsEngine {
   private accountSnapshot: AsterAccountSnapshot | null = null;
@@ -103,7 +102,6 @@ export class MakerPointsEngine {
   private readonly rateLimit: RateLimitController;
   private readonly binanceDepth: BinanceDepthTracker;
   private readonly notifier: NotificationSender;
-  private readonly telegramDebugLog: boolean;
 
   private priceTick: number = 0.1;
   private qtyStep: number = 0.001;
@@ -157,8 +155,6 @@ export class MakerPointsEngine {
       this.tradeLog.push(type, detail)
     );
     this.notifier = createTelegramNotifier();
-    this.telegramDebugLog = isTruthyEnv(process.env.TELEGRAM_DEBUG_LOG);
-    this.tradeLog.push("info", formatTelegramConfigLog(this.notifier.isEnabled()));
     this.priceTick = Math.max(1e-9, this.config.priceTick);
     this.qtyStep = Math.max(1e-9, this.config.qtyStep);
     this.binanceDepth = new BinanceDepthTracker(resolveBinanceSymbol(this.config.symbol), {
@@ -807,9 +803,6 @@ export class MakerPointsEngine {
   }
 
   private notify(notification: TradeNotification): void {
-    if (this.telegramDebugLog) {
-      this.tradeLog.push("info", formatTelegramSendLog(notification, this.notifier.isEnabled()));
-    }
     this.notifier.send(notification);
   }
 
@@ -1056,42 +1049,6 @@ export class MakerPointsEngine {
 
     return true;
   }
-}
-
-function isTruthyEnv(value: string | undefined): boolean {
-  if (!value) return false;
-  const normalized = value.trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
-}
-
-function maskSecret(value: string | undefined, revealStart = 4, revealEnd = 4): string {
-  if (!value) return "missing";
-  const trimmed = value.trim();
-  if (!trimmed) return "missing";
-  if (trimmed.length <= revealStart + revealEnd + 2) {
-    return `${trimmed.slice(0, 1)}...${trimmed.slice(-1)}(len=${trimmed.length})`;
-  }
-  return `${trimmed.slice(0, revealStart)}...${trimmed.slice(-revealEnd)}(len=${trimmed.length})`;
-}
-
-function maskChatId(value: string | undefined): string {
-  if (!value) return "missing";
-  const trimmed = value.trim();
-  if (!trimmed) return "missing";
-  if (trimmed.length <= 4) return `***${trimmed}`;
-  return `***${trimmed.slice(-4)}`;
-}
-
-function formatTelegramConfigLog(enabled: boolean): string {
-  const botToken = maskSecret(process.env.TELEGRAM_BOT_TOKEN);
-  const chatId = maskChatId(process.env.TELEGRAM_CHAT_ID);
-  const accountLabel = process.env.TELEGRAM_ACCOUNT_LABEL ?? "none";
-  return `${TELEGRAM_LOG_PREFIX} 配置: ${enabled ? "启用" : "未启用"} botToken=${botToken} chatId=${chatId} label=${accountLabel}`;
-}
-
-function formatTelegramSendLog(notification: TradeNotification, enabled: boolean): string {
-  const chatId = maskChatId(process.env.TELEGRAM_CHAT_ID);
-  return `${TELEGRAM_LOG_PREFIX} 发送尝试: enabled=${enabled} type=${notification.type} level=${notification.level} title=${notification.title} symbol=${notification.symbol} chatId=${chatId}`;
 }
 
 function resolveBinanceSymbol(symbol: string): string {
