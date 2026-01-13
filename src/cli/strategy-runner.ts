@@ -1,9 +1,10 @@
-import { basisConfig, gridConfig, isBasisStrategyEnabled, makerConfig, makerPointsConfig, tradingConfig } from "../config";
+import { basisConfig, gridConfig, isBasisStrategyEnabled, liquidityMakerConfig, makerConfig, makerPointsConfig, tradingConfig } from "../config";
 import { getExchangeDisplayName, resolveExchangeId } from "../exchanges/create-adapter";
 import type { ExchangeAdapter } from "../exchanges/adapter";
 import { buildAdapterFromEnv } from "../exchanges/resolve-from-env";
 import { MakerEngine, type MakerEngineSnapshot } from "../strategy/maker-engine";
 import { OffsetMakerEngine, type OffsetMakerEngineSnapshot } from "../strategy/offset-maker-engine";
+import { LiquidityMakerEngine, type LiquidityMakerEngineSnapshot } from "../strategy/liquidity-maker-engine";
 import { MakerPointsEngine, type MakerPointsSnapshot } from "../strategy/maker-points-engine";
 import { TrendEngine, type TrendEngineSnapshot } from "../strategy/trend-engine";
 import { GuardianEngine, type GuardianEngineSnapshot } from "../strategy/guardian-engine";
@@ -24,6 +25,7 @@ export const STRATEGY_LABELS: Record<StrategyId, string> = {
   maker: "Maker",
   "maker-points": "Maker Points",
   "offset-maker": "Offset Maker",
+  "liquidity-maker": "Liquidity Maker",
   basis: "Basis Arbitrage",
   grid: "Grid",
 };
@@ -106,6 +108,19 @@ const STRATEGY_FACTORIES: Record<StrategyId, StrategyRunner> = {
       offUpdate: (emitter) => engine.off("update", emitter),
     });
   },
+  "liquidity-maker": async (opts) => {
+    const config = liquidityMakerConfig;
+    const adapter = createAdapterOrThrow(config.symbol);
+    const engine = new LiquidityMakerEngine(config, adapter);
+    await runEngine({
+      engine,
+      strategy: "liquidity-maker",
+      silent: opts.silent,
+      getSnapshot: () => engine.getSnapshot(),
+      onUpdate: (emitter) => engine.on("update", emitter),
+      offUpdate: (emitter) => engine.off("update", emitter),
+    });
+  },
   basis: async (opts) => {
     if (!isBasisStrategyEnabled()) {
       throw new Error("Basis arbitrage strategy is disabled. Set ENABLE_BASIS_STRATEGY=true to enable it.");
@@ -156,6 +171,7 @@ async function runEngine<
     | MakerEngineSnapshot
     | MakerPointsSnapshot
     | OffsetMakerEngineSnapshot
+    | LiquidityMakerEngineSnapshot
     | BasisArbSnapshot
     | GridEngineSnapshot
 >(

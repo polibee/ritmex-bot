@@ -55,6 +55,15 @@ const translations: Record<string, TranslationEntry> = {
     zh: "监控期货与现货盘口差价，辅助发现套利机会",
     en: "Monitors futures/spot spread to surface arbitrage windows.",
   },
+  "app.strategy.liquidityMaker.label": { zh: "流动性做市商", en: "Liquidity Maker" },
+  "app.strategy.liquidityMaker.desc": {
+    zh: "成交后在更优价位挂单平仓，更敏感的深度偏移判断",
+    en: "Places close orders at better prices after fills, with sensitive depth imbalance detection.",
+  },
+  "liquidityMaker.title": { zh: "流动性做市商 (Liquidity Maker)", en: "Liquidity Maker" },
+  "liquidityMaker.initializing": { zh: "流动性做市商初始化中...", en: "Initializing Liquidity Maker..." },
+  "liquidityMaker.lastFill": { zh: "最近成交: {info}", en: "Last fill: {info}" },
+  "liquidityMaker.noFill": { zh: "无", en: "None" },
   "app.integrity.warning": {
     zh: "警告: 版权校验失败，当前版本可能被篡改。",
     en: "Warning: Copyright integrity check failed; build may be tampered.",

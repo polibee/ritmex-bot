@@ -294,6 +294,39 @@ export const gridConfig: GridConfig = {
 
 gridConfig.maxPositionSize = resolveGridMaxPosition(gridConfig.orderSize, gridConfig.gridLevels);
 
+export interface LiquidityMakerConfig {
+  symbol: string;
+  tradeAmount: number;
+  lossLimit: number;
+  bidOffset: number;
+  askOffset: number;
+  refreshIntervalMs: number;
+  maxLogEntries: number;
+  maxCloseSlippagePct: number;
+  priceTick: number;
+  /** 平仓挂单距成交价的档位数，默认1档 */
+  closeTickOffset: number;
+  /** 偏移判断阈值倍数，当一侧深度超出另一侧此倍数时取消薄端订单，默认2 */
+  depthImbalanceRatio: number;
+}
+
+export const liquidityMakerConfig: LiquidityMakerConfig = {
+  symbol: resolveSymbolFromEnv(),
+  tradeAmount: parseNumber(process.env.TRADE_AMOUNT, 0.001),
+  lossLimit: parseNumber(process.env.LIQUIDITY_MAKER_LOSS_LIMIT, parseNumber(process.env.MAKER_LOSS_LIMIT, parseNumber(process.env.LOSS_LIMIT, 0.03))),
+  bidOffset: parseNumber(process.env.LIQUIDITY_MAKER_BID_OFFSET, parseNumber(process.env.MAKER_BID_OFFSET, 0)),
+  askOffset: parseNumber(process.env.LIQUIDITY_MAKER_ASK_OFFSET, parseNumber(process.env.MAKER_ASK_OFFSET, 0)),
+  refreshIntervalMs: parseNumber(process.env.LIQUIDITY_MAKER_REFRESH_INTERVAL_MS, parseNumber(process.env.MAKER_REFRESH_INTERVAL_MS, 500)),
+  maxLogEntries: parseNumber(process.env.LIQUIDITY_MAKER_MAX_LOG_ENTRIES, parseNumber(process.env.MAKER_MAX_LOG_ENTRIES, 200)),
+  maxCloseSlippagePct: parseNumber(
+    process.env.LIQUIDITY_MAKER_MAX_CLOSE_SLIPPAGE_PCT ?? process.env.MAKER_MAX_CLOSE_SLIPPAGE_PCT ?? process.env.MAX_CLOSE_SLIPPAGE_PCT,
+    0.05
+  ),
+  priceTick: parseNumber(process.env.LIQUIDITY_MAKER_PRICE_TICK ?? process.env.MAKER_PRICE_TICK ?? process.env.PRICE_TICK, 0.1),
+  closeTickOffset: Math.max(1, Math.floor(parseNumber(process.env.LIQUIDITY_MAKER_CLOSE_TICK_OFFSET, 1))),
+  depthImbalanceRatio: Math.max(1.1, parseNumber(process.env.LIQUIDITY_MAKER_DEPTH_IMBALANCE_RATIO, 2)),
+};
+
 export function isBasisStrategyEnabled(): boolean {
   const raw = process.env.ENABLE_BASIS_STRATEGY;
   if (!raw) return false;

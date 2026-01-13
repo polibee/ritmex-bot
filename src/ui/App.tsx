@@ -5,6 +5,7 @@ import { GuardianApp } from "./GuardianApp";
 import { MakerApp } from "./MakerApp";
 import { MakerPointsApp } from "./MakerPointsApp";
 import { OffsetMakerApp } from "./OffsetMakerApp";
+import { LiquidityMakerApp } from "./LiquidityMakerApp";
 import { GridApp } from "./GridApp";
 import { BasisApp } from "./BasisApp";
 import { isBasisStrategyEnabled } from "../config";
@@ -13,7 +14,7 @@ import { resolveExchangeId } from "../exchanges/create-adapter";
 import { t } from "../i18n";
 
 interface StrategyOption {
-  id: "trend" | "guardian" | "maker" | "maker-points" | "offset-maker" | "basis" | "grid";
+  id: "trend" | "guardian" | "maker" | "maker-points" | "offset-maker" | "liquidity-maker" | "basis" | "grid";
   label: string;
   description: string;
   component: React.ComponentType<{ onExit: () => void }>;
@@ -49,6 +50,12 @@ const BASE_STRATEGIES: StrategyOption[] = [
     label: t("app.strategy.offset.label"),
     description: t("app.strategy.offset.desc"),
     component: OffsetMakerApp,
+  },
+  {
+    id: "liquidity-maker",
+    label: t("app.strategy.liquidityMaker.label"),
+    description: t("app.strategy.liquidityMaker.desc"),
+    component: LiquidityMakerApp,
   },
 ];
 
