@@ -132,6 +132,8 @@ type PlaceOrderOptions = {
   priceTick: number;
   qtyStep: number;
   skipDedupe?: boolean;
+  slPrice?: number;
+  tpPrice?: number;
 };
 
 export async function placeOrder(
@@ -176,9 +178,11 @@ export async function placeOrder(
       timeInForce: reduceOnly ? "GTC" : "GTX",
       reduceOnly: reduceOnly ? true : undefined,
       closePosition,
+      slPrice: opts?.slPrice,
+      tpPrice: opts?.tpPrice,
     });
     pendings[type] = String(order.orderId);
-    log("order", `挂限价单: ${side} @ ${priceNum} 数量 ${quantity} reduceOnly=${reduceOnly}`);
+    log("order", `挂限价单: ${side} @ ${priceNum} 数量 ${quantity} reduceOnly=${reduceOnly}${opts?.slPrice ? ` sl=${opts.slPrice}` : ""}`);
     return order;
   } catch (err) {
     unlockOperating(locks, timers, pendings, type);

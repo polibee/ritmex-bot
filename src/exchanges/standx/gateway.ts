@@ -799,6 +799,13 @@ export class StandxGateway {
       }
       payload.price = price;
     }
+    // StandX TPSL 参数
+    if (params.slPrice != null && Number.isFinite(params.slPrice)) {
+      payload.sl_price = toDecimalString(params.slPrice);
+    }
+    if (params.tpPrice != null && Number.isFinite(params.tpPrice)) {
+      payload.tp_price = toDecimalString(params.tpPrice);
+    }
     const response = await this.requestJson<{ code?: number; message?: string; request_id?: string }>(
       "/api/new_order",
       {
@@ -863,6 +870,12 @@ export class StandxGateway {
     };
     const handleError = (error: unknown) => {
       this.logger("marketWs", error);
+      // 如果连接从未成功建立（握手失败），需要清理并重连
+      // 因为某些 WebSocket 实现在握手失败时可能不触发 close 事件
+      if (this.marketWs && !this.marketWsReady) {
+        this.marketWs = null;
+        this.scheduleReconnect();
+      }
     };
 
     if ("addEventListener" in this.marketWs && typeof this.marketWs.addEventListener === "function") {
@@ -886,8 +899,10 @@ export class StandxGateway {
 
   private scheduleReconnect(): void {
     if (this.marketReconnectTimer) return;
+    this.logDebug("scheduling reconnect in 2s");
     this.marketReconnectTimer = setTimeout(() => {
       this.marketReconnectTimer = null;
+      this.logDebug("attempting reconnect");
       this.connectMarketWs();
     }, WS_RECONNECT_DELAY);
   }
@@ -1182,9 +1197,8 @@ export class StandxGateway {
         const order = this.mapOrder(raw);
         mergeOrderSnapshot(this.openOrders, order);
       }
-      if (orders.length) {
-        this.emitOrders();
-      }
+      // 无论是否有挂单都触发推送，确保上层状态更新
+      this.emitOrders();
     } catch (error) {
       this.logger("openOrders", error);
     }
@@ -1508,6 +1522,33 @@ export class StandxGateway {
 
     // 停止断连保护重试
     this.stopDisconnectCancelRetry();
+
+    // 清空本地挂单状态（重连后需要重新同步）
+    this.openOrders.clear();
+
+    // 主动触发一次数据推送，确保上层 feedStatus 能更新
+    this.emitOrders();
+    this.emitAccountSnapshot();
+
+    // 主动刷新账户和挂单数据
+    void this.refreshAccountSnapshot();
+
+    // 获取当前订阅的 symbols 并刷新数据
+    const subscribedSymbols = new Set<string>();
+    for (const key of this.subscriptions) {
+      const [, symbol] = key.split(":");
+      if (symbol) subscribedSymbols.add(symbol);
+    }
+    if (this.disconnectedSymbol) {
+      subscribedSymbols.add(this.disconnectedSymbol);
+    }
+
+    // 刷新每个 symbol 的数据
+    for (const symbol of subscribedSymbols) {
+      void this.refreshOpenOrders(symbol);
+      void this.fetchDepthSnapshot(symbol).catch((e) => this.logger("depthSnapshot", e));
+      void this.fetchTickerSnapshot(symbol).catch((e) => this.logger("tickerSnapshot", e));
+    }
 
     // 触发重连事件
     for (const listener of this.connectionListeners) {

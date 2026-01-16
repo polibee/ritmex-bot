@@ -25,6 +25,9 @@ export interface CreateOrderParams {
   reduceOnly?: StringBoolean;
   closePosition?: StringBoolean;
   triggerType?: "UNSPECIFIED" | "TAKE_PROFIT" | "STOP_LOSS";
+  // StandX TPSL 参数
+  slPrice?: number; // 止损价格
+  tpPrice?: number; // 止盈价格
 }
 
 export interface AsterAccountPosition {

@@ -701,6 +701,9 @@ export class MakerPointsEngine {
       if (!target) continue;
       if (target.amount < EPS) continue;
       try {
+        // 计算止损价格：买单在价格下方 $1，卖单在价格上方 $1
+        const priceNum = Number(target.price);
+        const slPrice = target.side === "BUY" ? priceNum - 1 : priceNum + 1;
         await placeOrder(
           this.exchange,
           this.config.symbol,
@@ -718,6 +721,7 @@ export class MakerPointsEngine {
             priceTick: this.priceTick,
             qtyStep: this.qtyStep,
             skipDedupe: true,
+            slPrice,
           }
         );
       } catch (error) {

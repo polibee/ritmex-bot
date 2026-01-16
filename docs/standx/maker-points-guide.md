@@ -72,7 +72,7 @@ https://standx.com/user/session
 你会看到类似这样的信息：
 - **Token**（很长一串以 eyJ 开头的字符串）
 - **Ed25519 Private Key**（Base58 格式的私钥，类似 `HdsyJD7oWgT756124j3taSPGv...`）
-- **创建日期**（例如：2025-01-15）
+- **创建日期**（例如：2026-01-15）
 - **有效期天数**（例如：30 天）
 
 > 🔴 **请把这些值复制保存下来！**
@@ -140,8 +140,8 @@ MAKER_POINTS_BAND_30_100=true
 
 # ===== Token 过期时间配置（推荐配置） =====
 # 填写你创建 API Token 时显示的创建日期和有效期天数
-# 创建日期格式：YYYY-MM-DD（例如：2025-01-15）
-STANDX_TOKEN_CREATE_DATE=2025-01-15
+# 创建日期格式：YYYY-MM-DD（例如：2026-01-15）
+STANDX_TOKEN_CREATE_DATE=2026-01-15
 # 有效期天数（例如：30）
 STANDX_TOKEN_VALIDITY_DAYS=30
 
@@ -159,7 +159,7 @@ STANDX_TOKEN_VALIDITY_DAYS=30
 假设你生成的 API Token 信息是：
 - Token: `eyJhbGciOiJFUzI1NiIsImtpZCI6IlhnaEJQSVNuN0RQVHlMcWJtLUVHVkVhOU1lMFpwdU9iMk1Qc2gtbUFlencifQ...`
 - Ed25519 Private Key: `HdsyJD7oWgT756124j3taSPGv17vo5u7FafDq3vrun4f`
-- 创建日期: `2025-01-15`
+- 创建日期: `2026-01-15`
 - 有效期: `30` 天
 
 那么你的 `.env` 应该这样写：
@@ -176,7 +176,7 @@ MAKER_POINTS_MIN_REPRICE_BPS=3
 MAKER_POINTS_BAND_0_10=true
 MAKER_POINTS_BAND_10_30=true
 MAKER_POINTS_BAND_30_100=true
-STANDX_TOKEN_CREATE_DATE=2025-01-15
+STANDX_TOKEN_CREATE_DATE=2026-01-15
 STANDX_TOKEN_VALIDITY_DAYS=30
 # TELEGRAM_BOT_TOKEN=你的BotToken
 # TELEGRAM_CHAT_ID=你的ChatID
@@ -237,13 +237,13 @@ bun run pm2:start:maker-points
 
 ```bash
 # 创建日期（格式：YYYY-MM-DD）
-STANDX_TOKEN_CREATE_DATE=2025-01-15
+STANDX_TOKEN_CREATE_DATE=2026-01-15
 # 有效期天数
 STANDX_TOKEN_VALIDITY_DAYS=30
 ```
 
 **示例计算：**
-- 创建日期：2025-01-15
+- 创建日期：2026-01-15
 - 有效期：30 天
 - 过期时间：2025-02-14 00:00:00 UTC
 

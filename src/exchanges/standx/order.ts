@@ -34,6 +34,8 @@ export async function createLimitOrder(intent: LimitOrderIntent): Promise<AsterO
       quantity: intent.quantity,
       price: intent.price,
       timeInForce: intent.timeInForce ?? "GTX",
+      slPrice: intent.slPrice,
+      tpPrice: intent.tpPrice,
     },
     intent
   );
