@@ -169,6 +169,9 @@ export async function placeOrder(
   lockOperating(locks, timers, pendings, type, log);
   try {
     const closePosition = reduceOnly ? true : undefined;
+    // StandX API: reduce-only 订单不能设置 tp/sl
+    const slPrice = reduceOnly ? undefined : opts?.slPrice;
+    const tpPrice = reduceOnly ? undefined : opts?.tpPrice;
     const order = await routeLimitOrder({
       adapter,
       symbol,
@@ -178,8 +181,8 @@ export async function placeOrder(
       timeInForce: reduceOnly ? "GTC" : "GTX",
       reduceOnly: reduceOnly ? true : undefined,
       closePosition,
-      slPrice: opts?.slPrice,
-      tpPrice: opts?.tpPrice,
+      slPrice,
+      tpPrice,
     });
     pendings[type] = String(order.orderId);
     log("order", `挂限价单: ${side} @ ${priceNum} 数量 ${quantity} reduceOnly=${reduceOnly}${opts?.slPrice ? ` sl=${opts.slPrice}` : ""}`);
